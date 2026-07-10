@@ -21,10 +21,10 @@ if queries and n8n_webhook:
         for query in queries:
             print(f"Searching Google Maps for: {query}")
             try:
-                # 💡 FIXED: Real, functional live Google Maps Search string
+                # 🎯 THE REAL FIX: Official Google Maps search endpoint
                 search_url = f"https://www.google.com/maps/search/{requests.utils.quote(query)}"
                 page.goto(search_url, wait_until="domcontentloaded")
-                page.wait_for_timeout(5000) # Give elements 5 seconds to load listings
+                page.wait_for_timeout(5000) # Wait 5 seconds for map elements to load
                 
                 # Extract business elements matching Google Maps standard location links
                 links = page.locator('a[href*="/maps/place/"]').all()
@@ -54,7 +54,8 @@ if n8n_webhook:
     payload = all_results if all_results else [{"name": "No Leads Found", "phone": "Empty", "website": "Empty"}]
     try:
         print(f"Firing payload back to n8n webhook: {n8n_webhook}")
-        response = requests.post(n8n_webhook, json=payload)
+        # 🎯 THE TIMEOUT FIX: Gives your Render server up to 60 seconds to spin up and accept data
+        response = requests.post(n8n_webhook, json=payload, timeout=120)
         print(f"Successfully reached n8n. Status: {response.status_code}")
     except Exception as e:
         print(f"Failed to send data to webhook: {e}")
