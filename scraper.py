@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 # Decode the flat text string back into a clean Python list
 queries_env = os.environ.get("SCRAPE_QUERIES", "")
 queries = [q.strip() for q in queries_env.split("|||") if q.strip()]
-n8n_webhook = os.environ.get("N8N_WEBHOOK_URL")
+n8n_webhook = os.environ.get("https://n8n-service-jk9f.onrender.com/webhook/leads-receiver")
 all_results = []
 
 print(f"Decoded queries string successfully: {queries}")
