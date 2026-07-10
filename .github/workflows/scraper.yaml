@@ -8,11 +8,9 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
-    # Upgrade: Bumped from v3 to v4 to support Node 24 natively
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # Upgrade: Bumped from v4 to v5 to support Node 24 natively
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -25,6 +23,6 @@ jobs:
 
     - name: Run Scraper Script
       env:
-        SCRAPE_QUERIES: '${{ github.event.client_payload.queries }}'
-        N8N_WEBHOOK_URL: '${{ github.event.client_payload.webhook_url }}'
+        SCRAPE_QUERIES: "${{ github.event.client_payload.queries }}"
+        N8N_WEBHOOK_URL: "${{ github.event.client_payload.webhook_url }}"
       run: python scraper.py
