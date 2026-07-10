@@ -9,7 +9,7 @@ try:
 except Exception:
     queries = [queries_env] if queries_env else []
 
-n8n_webhook = os.environ.get("N8N_WEBHOOK_URL")
+n8n_webhook = os.environ.get("https://n8n-service-jk9f.onrender.com/webhook/leads-receiver")
 all_results = []
 
 print(f"Processing queries: {queries}")
