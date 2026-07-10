@@ -3,11 +3,10 @@ import json
 import requests
 from playwright.sync_api import sync_playwright
 
-# 1. Pull the data sent by your n8n workflow
 queries_env = os.environ.get("SCRAPE_QUERIES", "[]")
 try:
     queries = json.loads(queries_env)
-) except:
+except Exception:
     queries = [queries_env] if queries_env else []
 
 n8n_webhook = os.environ.get("N8N_WEBHOOK_URL")
@@ -18,7 +17,6 @@ print(f"Processing queries: {queries}")
 if queries and n8n_webhook:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        # Apply a realistic browser profile to clear bot filters
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
@@ -29,18 +27,17 @@ if queries and n8n_webhook:
                 continue
             print(f"Searching Google Maps for: {query}")
             try:
-                # FIX: Accurate, clean Google Maps search entrypoint
+                # Fixed target search destination
                 search_url = f"https://www.google.com/maps/search/{requests.utils.quote(query)}"
                 page.goto(search_url, wait_until="domcontentloaded")
-                page.wait_for_timeout(4000) # Give elements 4 seconds to draw
+                page.wait_for_timeout(4000)
                 
-                # Extract matching business links
                 links = page.locator('a[href*="/maps/place/"]').all()
                 print(f"Found {len(links)} potential listings.")
                 
                 count = 0
                 for link in links:
-                    if count >= 3: # Keep it limited to top 3 per town to stay fast
+                    if count >= 3:
                         break
                     title = link.get_attribute("aria-label")
                     url = link.get_attribute("href")
@@ -48,7 +45,7 @@ if queries and n8n_webhook:
                         all_results.append({
                             "name": title,
                             "Search Term": query,
-                            "website": url if url else "https://maps.google.com",
+                            "website": url if url else "",
                             "phone": "Available on Maps Link"
                         })
                         count += 1
@@ -57,7 +54,6 @@ if queries and n8n_webhook:
                 
         browser.close()
 
-# FIX: Always ping n8n back no matter what so your canvas never hangs in silence
 if n8n_webhook:
     payload = all_results if all_results else [{"name": "No Leads Found", "phone": "", "website": ""}]
     try:
