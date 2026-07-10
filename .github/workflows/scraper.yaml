@@ -8,11 +8,13 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
+    # Fixed: Upgraded to v5 to support Node 24 natively
     - name: Checkout Code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
+    # Fixed: Upgraded to v6 to support Node 24 natively
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.10'
 
