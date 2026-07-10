@@ -1,74 +1,28 @@
-import os
-import requests
-from playwright.sync_api import sync_playwright
+name: Run Google Maps Scraper
 
-# Decode the flat text string back into a clean Python list
-queries_env = os.environ.get("SCRAPE_QUERIES", "")
-queries = [q.strip() for q in queries_env.split("|||") if q.strip()]
+on:
+  repository_dispatch:
+    types: [trigger-scrape]
 
-# 🎯 FIXED: Pulls the correct variable key defined inside your YAML env configurations
-n8n_webhook = os.environ.get("N8N_WEBHOOK_URL")
-all_results = []
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-print(f"Decoded queries string successfully: {queries}")
-print(f"Target Webhook Destination: {n8n_webhook}")
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-if queries and n8n_webhook:
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            viewport={"width": 1920, "height": 1080}
-        )
-        page = context.new_page()
-        
-        for query in queries:
-            print(f"Searching Google Maps for: {query}")
-            try:
-                # 🎯 FIXED: Real, universally active Google Maps Search URL endpoint
-                search_url = f"https://www.google.com/maps/search/{requests.utils.quote(query)}"
-                page.goto(search_url, wait_until="domcontentloaded")
-                
-                # Clear Google cookie consent walls if they pop up on the cloud runner
-                try:
-                    consent_btn = page.locator("button:has-text('Accept all'), button:has-text('Agree')")
-                    if consent_btn.count() > 0:
-                        consent_btn.first.click()
-                        page.wait_for_timeout(1000)
-                except:
-                    pass
-                
-                # Wait up to 10 seconds for actual map business listings to appear
-                page.wait_for_selector('a[href*="/maps/place/"]', timeout=10000)
-                
-                # Pull map location listings from the page elements
-                links = page.locator('a[href*="/maps/place/"]').all()
-                print(f"Found {len(links)} map items for '{query}'.")
-                
-                count = 0
-                for link in links:
-                    if count >= 3: # Top 3 leads per town to keep things fast
-                        break
-                    title = link.get_attribute("aria-label")
-                    url = link.get_attribute("href")
-                    if title:
-                        all_results.append({
-                            "name": title,
-                            "Search Term": query,
-                            "website": url if url else "",
-                            "phone": "Available on Maps"
-                        })
-                        count += 1
-            except Exception as e:
-                print(f"Note for '{query}': {e}")
-                
-        browser.close()
+      - name: Install Dependencies
+        run: |
+          pip install playwright requests
+          playwright install chromium
 
-# Report real data back to your n8n production webhook
-if n8n_webhook:
-    print(f"Firing {len(all_results)} total leads back to n8n.")
-    try:
-        response = requests.post(n8n_webhook, json=all_results, timeout=120)
-        print(f"Successfully reached n8n. Status: {response.status_code}")
-    except Exception as e:
-        print(f"Failed to send data to webhook: {e}")
+      - name: Run Scraper Script
+        env:
+          SCRAPE_QUERIES: "${{ github.event.client_payload.queries }}"
+          N8N_WEBHOOK_URL: "${{ github.event.client_payload.webhook_url }}"
+        run: python scraper.py
