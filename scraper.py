@@ -3,44 +3,65 @@ import json
 import requests
 from playwright.sync_api import sync_playwright
 
-# 1. Grab target queries passed from your n8n workflow
+# 1. Pull the data sent by your n8n workflow
 queries_env = os.environ.get("SCRAPE_QUERIES", "[]")
-queries = json.loads(queries_env)
-n8n_webhook = os.environ.get("N8N_WEBHOOK_URL")
+try:
+    queries = json.loads(queries_env)
+) except:
+    queries = [queries_env] if queries_env else []
 
+n8n_webhook = os.environ.get("N8N_WEBHOOK_URL")
 all_results = []
 
-with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
-    page = browser.new_page()
-    
-    for query in queries:
-        print(f"Scraping: {query}")
-        try:
-            # Search Google Maps
-            page.goto(f"https://www.google.com/maps/search/{query.replace(' ', '+')}")
-            page.wait_for_timeout(5000) # Give it 5 seconds to load listings
-            
-            # Extract names, phones, and websites from the page elements
-            # (Basic selector pull; can expand as needed)
-            entries = page.locator('//a[contains(@href, "/maps/place/")]').all()
-            for entry in entries[:5]: # Grab top 5 leads per town to stay fast
-                try:
-                    title = entry.get_attribute("aria-label") or "Unknown"
-                    all_results.append({
-                        "Search Term": query,
-                        "name": title,
-                        "phone": "Available on Maps", # Placeholder fallback
-                        "website": "Available on Maps"
-                    })
-                except:
-                    continue
-        except Exception as e:
-            print(f"Error scraping {query}: {e}")
-            
-    browser.close()
+print(f"Processing queries: {queries}")
 
-# 2. Send all collected leads back to your self-hosted n8n instance
-if n8n_webhook and all_results:
-    requests.post(n8n_webhook, json=all_results)
-    print(f"Successfully sent {len(all_results)} leads back to n8n!")
+if queries and n8n_webhook:
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        # Apply a realistic browser profile to clear bot filters
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+        
+        for query in queries:
+            if not query.strip():
+                continue
+            print(f"Searching Google Maps for: {query}")
+            try:
+                # FIX: Accurate, clean Google Maps search entrypoint
+                search_url = f"https://www.google.com/maps/search/{requests.utils.quote(query)}"
+                page.goto(search_url, wait_until="domcontentloaded")
+                page.wait_for_timeout(4000) # Give elements 4 seconds to draw
+                
+                # Extract matching business links
+                links = page.locator('a[href*="/maps/place/"]').all()
+                print(f"Found {len(links)} potential listings.")
+                
+                count = 0
+                for link in links:
+                    if count >= 3: # Keep it limited to top 3 per town to stay fast
+                        break
+                    title = link.get_attribute("aria-label")
+                    url = link.get_attribute("href")
+                    if title:
+                        all_results.append({
+                            "name": title,
+                            "Search Term": query,
+                            "website": url if url else "https://maps.google.com",
+                            "phone": "Available on Maps Link"
+                        })
+                        count += 1
+            except Exception as e:
+                print(f"Query Error '{query}': {e}")
+                
+        browser.close()
+
+# FIX: Always ping n8n back no matter what so your canvas never hangs in silence
+if n8n_webhook:
+    payload = all_results if all_results else [{"name": "No Leads Found", "phone": "", "website": ""}]
+    try:
+        response = requests.post(n8n_webhook, json=payload)
+        print(f"Webhook response received: {response.status_code}")
+    except Exception as e:
+        print(f"Failed to reach n8n webhook: {e}")
