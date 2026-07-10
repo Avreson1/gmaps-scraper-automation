@@ -14,25 +14,37 @@ if queries and n8n_webhook:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            viewport={"width": 1920, "height": 1080}
         )
         page = context.new_page()
         
         for query in queries:
             print(f"Searching Google Maps for: {query}")
             try:
-                # 🎯 THE REAL FIX: Official Google Maps search endpoint
+                # 🎯 THE REAL GOOGLE MAPS LINK
                 search_url = f"https://www.google.com/maps/search/{requests.utils.quote(query)}"
                 page.goto(search_url, wait_until="domcontentloaded")
-                page.wait_for_timeout(5000) # Wait 5 seconds for map elements to load
                 
-                # Extract business elements matching Google Maps standard location links
+                # Clear Google cookie walls if they pop up on the cloud runner
+                try:
+                    consent_btn = page.locator("button:has-text('Accept all'), button:has-text('Agree')")
+                    if consent_btn.count() > 0:
+                        consent_btn.first.click()
+                        page.wait_for_timeout(1000)
+                except:
+                    pass
+                
+                # Wait up to 10 seconds for actual map business listings to appear
+                page.wait_for_selector('a[href*="/maps/place/"]', timeout=10000)
+                
+                # Pull map location listings from the page elements
                 links = page.locator('a[href*="/maps/place/"]').all()
                 print(f"Found {len(links)} map items for '{query}'.")
                 
                 count = 0
                 for link in links:
-                    if count >= 3: # Grab top 3 leads per town to keep things fast
+                    if count >= 3: # Top 3 leads per town to keep things fast
                         break
                     title = link.get_attribute("aria-label")
                     url = link.get_attribute("href")
@@ -45,17 +57,15 @@ if queries and n8n_webhook:
                         })
                         count += 1
             except Exception as e:
-                print(f"Error scanning '{query}': {e}")
+                print(f"Note for '{query}': {e}")
                 
         browser.close()
 
-# Report data packages back to n8n
+# Report real data back to your n8n production webhook
 if n8n_webhook:
-    payload = all_results if all_results else [{"name": "No Leads Found", "phone": "Empty", "website": "Empty"}]
+    print(f"Firing {len(all_results)} total leads back to n8n.")
     try:
-        print(f"Firing payload back to n8n webhook: {n8n_webhook}")
-        # 🎯 THE TIMEOUT FIX: Gives your Render server up to 60 seconds to spin up and accept data
-        response = requests.post(n8n_webhook, json=payload, timeout=120)
+        response = requests.post(n8n_webhook, json=all_results, timeout=120)
         print(f"Successfully reached n8n. Status: {response.status_code}")
     except Exception as e:
         print(f"Failed to send data to webhook: {e}")
