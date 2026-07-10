@@ -2,12 +2,13 @@ import os
 import requests
 from playwright.sync_api import sync_playwright
 
+# Decode the flat text string back into a clean Python list
 queries_env = os.environ.get("SCRAPE_QUERIES", "")
 queries = [q.strip() for q in queries_env.split("|||") if q.strip()]
-n8n_webhook = os.environ.get("https://n8n-service-jk9f.onrender.com/webhook-test/leads-receiver")
+n8n_webhook = os.environ.get("N8N_WEBHOOK_URL")
 all_results = []
 
-print(f"Decoded queries: {queries}")
+print(f"Decoded queries string successfully: {queries}")
 
 if queries and n8n_webhook:
     with sync_playwright() as p:
@@ -23,15 +24,15 @@ if queries and n8n_webhook:
                 # 💡 FIXED: Real, functional live Google Maps Search string
                 search_url = f"https://www.google.com/maps/search/{requests.utils.quote(query)}"
                 page.goto(search_url, wait_until="domcontentloaded")
-                page.wait_for_timeout(5000)
+                page.wait_for_timeout(5000) # Give elements 5 seconds to load listings
                 
-                # Extract business elements
+                # Extract business elements matching Google Maps standard location links
                 links = page.locator('a[href*="/maps/place/"]').all()
-                print(f"Found {len(links)} map items.")
+                print(f"Found {len(links)} map items for '{query}'.")
                 
                 count = 0
                 for link in links:
-                    if count >= 3:
+                    if count >= 3: # Grab top 3 leads per town to keep things fast
                         break
                     title = link.get_attribute("aria-label")
                     url = link.get_attribute("href")
@@ -48,11 +49,12 @@ if queries and n8n_webhook:
                 
         browser.close()
 
+# Report data packages back to n8n
 if n8n_webhook:
-    payload = all_results if all_results else [{"name": "No Leads Found", "phone": "", "website": ""}]
+    payload = all_results if all_results else [{"name": "No Leads Found", "phone": "Empty", "website": "Empty"}]
     try:
-        print(f"Firing payload back to n8n: {n8n_webhook}")
+        print(f"Firing payload back to n8n webhook: {n8n_webhook}")
         response = requests.post(n8n_webhook, json=payload)
-        print(f"Webhook completed. Server status: {response.status_code}")
+        print(f"Successfully reached n8n. Status: {response.status_code}")
     except Exception as e:
-        print(f"Could not reach n8n: {e}")
+        print(f"Failed to send data to webhook: {e}")
